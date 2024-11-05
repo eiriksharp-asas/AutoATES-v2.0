@@ -1,0 +1,2 @@
+DEM,canopy,cell_count,FP,SAT01,SAT12,SAT23,SAT34,AAT1,AAT2,AAT3,TREE1,TREE2,TREE3,CC1,CC2,ISL_SIZE,WIN_SIZE
+Dem.tif,forest_ccp.tif,cellCounts.tif,fpTravelAngle.tif,15,18,28,39,18,24,33,20,60,85,5,40,30000,3

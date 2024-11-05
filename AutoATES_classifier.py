@@ -7,15 +7,19 @@ import csv
 import scipy.ndimage
 from rasterio.fill import fillnodata
 
-# --- Set Input Files
-DEM = 'test-data/Bow Summit/dem.tif'
-canopy = 'test-data/Bow Summit/forest.tif'
-cell_count = 'test-data/Bow Summit/Overhead.tif' # replace with z_delta in next iteration
-FP = 'test-data/Bow Summit/FP_int16.tif'
-SZ = 'test-data/Bow Summit/pra_binary.tif'
-forest_type = 'bav' # 'bav', 'stems', 'pcc', 'sen2cc'
+# Define the working directory
+wd = 'D:/DEV/python/AutoAtes/raster_data'
 
-wd = 'test-data/Bow Summit/outputs'
+# Set the working directory for the script
+os.chdir(wd)
+
+# --- Set Input Files
+DEM = 'Dem.tif'
+canopy = 'forest_ccp.tif'
+cell_count = 'cellCounts.tif' # replace with z_delta in next iteration
+FP = 'fpTravelAngle.tif'
+SZ = 'pra_binary.tif'
+forest_type = 'sen2cc' # 'bav', 'stems', 'pcc', 'sen2cc'
 
 # --- Set default input parameters
 
@@ -69,7 +73,7 @@ if forest_type in ['stems']:
     # Tree classification: "mixed" (upper bound)
     TREE3 = 500
 
-if forest_type in ['sen2ccc']:
+if forest_type in ['sen2cc']:
     # --- Add tree coverage criteria
     # Tree classification: "open" (upper bound)
     TREE1 = 20
@@ -129,46 +133,49 @@ def AutoATES(wd, DEM, canopy, cell_count, FP, SAT01, SAT12, SAT23, SAT34, AAT1, 
     with rasterio.open(os.path.join(wd, "slope_smooth.tif"), 'w', **profile) as dst:
         dst.write(slope_smooth)
 
-    # --- Open Flow-Py data, reclassify by thresholds and combine class 1, 2, and 3 runout zones into one raster
-
-    # --- AAT1
+    # --- Read Flow Path Data Once
     with rasterio.open(FP) as src:
-        array = src.read(1)
-        profile = src.profile
-        array = array.astype('int16')  
-
-    flow_py18 = array
-    flow_py18[np.where((flow_py18 >= 0) & (flow_py18 < 90))] = 1 # Changed to 0 from AAT1 because we are not using Non-Avalanche Terrain - class 0
-
-    # --- AAT2
-    with rasterio.open(FP) as src:
-        array = src.read(1)
-        profile = src.profile
-        array = array.astype('int16')  
-
-    flow_py25 = array    
-    flow_py25[np.where((flow_py25 < AAT2))] = 0
-    flow_py25[np.where((flow_py25 >= AAT2) & (flow_py25 < 90))] = 2
-
-    # --- AAT3
-    with rasterio.open(FP) as src:
-        array = src.read(1)
-        profile = src.profile
-        array = array.astype('int16')   
-
-    flow_py38 = array
-    flow_py38[np.where((flow_py38 < AAT3))] = 0
-    flow_py38[np.where((flow_py38 >= AAT3) & (flow_py38 < 90))] = 3
-
-    flowpy = np.maximum(flow_py18, flow_py25)
-    flowpy = np.maximum(flowpy, flow_py38)
-    flowpy = flowpy.reshape(1, flowpy.shape[0], flowpy.shape[1])
+        array = src.read(1)  # Read the first band of the raster
+        profile = src.profile  # Extract metadata/profile information
+        array = array.astype('int16')  # Convert the array to 16-bit integer
 
     # Update metadata
     profile.update({"driver": "GTiff", "nodata": -9999, 'dtype': 'int16'})
 
+  
+
+   
+    # --- AAT1 (Class 1 Runout Zone)
+    flowpy1 = np.copy(array)
+    flowpy1[np.where(flowpy1 < AAT1)] = 0  # Assign 0 to areas below `AAT1`
+    flowpy1[np.where((flowpy1 >= AAT1) & (flowpy1 < 90))] = 1  # Assign value 1 to areas meeting Class 1 criteria
+
+    # --- AAT2 (Class 2 Runout Zone)
+    flowpy2 = np.copy(array)
+    flowpy2[np.where(flowpy2 < AAT2)] = 0  # Assign 0 to areas below `AAT2`
+    flowpy2[np.where((flowpy2 >= AAT2) & (flowpy2 < 90))] = 2  # Assign value 2 to areas meeting Class 2 criteria
+
+    # --- AAT3 (Class 3 Runout Zone)
+    flowpy3 = np.copy(array)
+    flowpy3[np.where(flowpy3 < AAT3)] = 0  # Assign 0 to areas below `AAT3`
+    flowpy3[np.where((flowpy3 >= AAT3) & (flowpy3 < 90))] = 3  # Assign value 3 to areas meeting Class 3 criteria
+
+    # --- Combine Layers
+    # Use np.maximum() to create a composite raster where higher classes take precedence
+    flowpy = np.maximum(flowpy1, flowpy2)
+    flowpy = np.maximum(flowpy, flowpy3)
+
+    # --- Reshape for rasterio write compatibility
+    flowpy = flowpy.reshape(1, flowpy.shape[0], flowpy.shape[1])
+
+    # --- Update Metadata and Save Result
+    # Update the profile with the correct data type and nodata value, if necessary
+    profile.update({"driver": "GTiff", "nodata": -9999, 'dtype': 'int16'})  # Set nodata value explicitly if needed
+
+    # --- Save Raster to File
     with rasterio.open(os.path.join(wd, "flowpy.tif"), 'w', **profile) as dst:
         dst.write(flowpy)
+
 
     # --- Add cell count criteria
 
@@ -182,8 +189,8 @@ def AutoATES(wd, DEM, canopy, cell_count, FP, SAT01, SAT12, SAT23, SAT34, AAT1, 
         profile.update({"driver": "GTiff", "nodata": -9999, 'dtype': 'int16'})
 
         # Reclassify
-        array[np.where(array == -9999)] = 0
-        array[np.where((0 <= array) & (array <= CC1))] = 1
+        array[np.where(array <= 0)] = 0
+        array[np.where((0 < array) & (array <= CC1))] = 1
         array[np.where((CC1 < array) & (array <= CC2))] = 2
         array[np.where((CC2 < array) & (array <= 20000))] = 3
 
@@ -342,7 +349,7 @@ def AutoATES(wd, DEM, canopy, cell_count, FP, SAT01, SAT12, SAT23, SAT34, AAT1, 
     
     # --- Change values back to standardized way of plotting ATES (0, 1, 2, 3 and 4)
     data = data - 1
-    data[np.where(data == 0)] = -9999
+    data[np.where(data < 0)] = -9999
     data = data.astype('int16')
     profile.update({"driver": "GTiff", "nodata": -9999, 'dtype': 'int16'})
 

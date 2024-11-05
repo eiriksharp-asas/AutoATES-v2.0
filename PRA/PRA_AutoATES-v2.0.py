@@ -45,17 +45,22 @@ Created on Tue October 11 09:54:00 2022
 """
 
 # import standard libraries
-import numpy as np
-import rasterio, rasterio.mask
-from osgeo import gdal
 import os
-from numpy.lib.stride_tricks import as_strided
-from collections import deque
 import sys
+import numpy as np
+import rasterio
+import rasterio.mask
+from osgeo import gdal
 from datetime import datetime
+from collections import deque
+from numpy.lib.stride_tricks import as_strided
+
+# Define and set the working directory
+wd = 'D:/DEV/python/AutoAtes/raster_data'
+os.chdir(wd)
 
 # --- Example
-# stems (10m raster):       python PRA/PRA_AutoATES-v2.0.py stems PRA/DEM.tif PRA/FOREST.tif 6 0.5 0 180 0.15 3
+# stems (10m raster):       python PRA/PRA_AutoATES-v2.0.py stems PRA/DEM.tif PRA/FOREST.tif 6 0.5 0 180 0.15 3``
 # no_forest (10m raster):   python PRA/PRA_AutoATES-v2.0.py no_forest PRA/DEM.tif 6 0.5 0 180 0.15 3
 
 def PRA(forest_type, DEM, FOREST, radius, prob, winddir, windtol, pra_thd, sf):
